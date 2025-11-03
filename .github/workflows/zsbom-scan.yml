@@ -1,0 +1,264 @@
+# ⚠️ WARNING: This file is managed by Zerberus automation.
+# DO NOT EDIT MANUALLY - Changes will be overwritten.
+# Template Version: 2.0.0
+# Contact your administrator for modifications.
+
+name: ZSBOM Security Scan
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch/tag/SHA to scan'
+        required: false
+        default: 'main'
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  packages: write
+  id-token: write
+
+env:
+  TEMPLATE_VERSION: "0.0.3"
+  PYTHON_VERSION: "3.11"
+  PIP_VERSION: "24.0"
+  GO_VERSION: "1.24"
+  ZSBOM_VERSION: "v0.12-beta.0"  # Stable release tag
+  ZERBERUS_API_URL: "https://api.zerberus.ai"  # Centralized API URL
+  ZERBERUS_DASHBOARD_URL: "https://app.zerberus.ai"  # Dashboard URL for PR comments
+
+jobs:
+  zsbom-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          pip-version: ${{ env.PIP_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: cosign-installer
+        uses: sigstore/cosign-installer@v3.9.2
+
+      - name: Cache ZSBOM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.local/lib/python*/site-packages
+          key: zsbom-${{ runner.os }}-python${{ env.PYTHON_VERSION }}-${{ env.ZSBOM_VERSION }}
+          restore-keys: |
+            zsbom-${{ runner.os }}-python${{ env.PYTHON_VERSION }}-
+            zsbom-${{ runner.os }}-
+
+      - name: Install ZSBOM
+        run: |
+          echo "📦 Installing ZSBOM (Template Version: ${{ env.TEMPLATE_VERSION }})"
+          pip install git+https://github.com/ZerberusAI/ZSBOM.git@${{ env.ZSBOM_VERSION }}
+
+      - name: Run ZSBOM vulnerability scan
+        id: zsbom-scan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZERBERUS_LICENSE_KEY: ${{ secrets.ZERBERUS_LICENSE_KEY }}
+          ZERBERUS_API_URL: ${{ env.ZERBERUS_API_URL }}
+          TEMPLATE_VERSION: ${{ env.TEMPLATE_VERSION }}
+        run: |
+          echo "🔍 Running ZSBOM security scan (Template Version: ${{ env.TEMPLATE_VERSION }})..."
+          echo "📂 Repository: ${{ github.repository }}"
+          echo "🌿 Branch/Ref: ${{ github.event.inputs.ref || github.ref }}"
+          echo "🐍 Python Version: ${{ env.PYTHON_VERSION }}"
+
+          zsbom scan
+          SCAN_EXIT_CODE=$?
+          echo "SCAN_EXIT_CODE=$SCAN_EXIT_CODE" >> $GITHUB_ENV
+
+          # Check if repository uses unsupported ecosystems
+          if [ -f "scan_metadata.json" ]; then
+            UNSUPPORTED=$(cat scan_metadata.json | grep -o '"unsupported_repo"[[:space:]]*:[[:space:]]*true' || echo "")
+            if [ ! -z "$UNSUPPORTED" ]; then
+              echo "ℹ️  Repository uses unsupported ecosystems - scan skipped"
+              echo "scan_status=unsupported" >> $GITHUB_OUTPUT
+              echo "scan_message=ℹ️ This repository uses ecosystems not yet supported by ZSBOM (currently supports: Python, JavaScript/npm)" >> $GITHUB_OUTPUT
+              echo "UNSUPPORTED_REPO=true" >> $GITHUB_ENV
+              exit 0
+            fi
+          fi
+
+          # Set outputs for PR comment based on scan results
+          if [ $SCAN_EXIT_CODE -eq 0 ]; then
+            echo "✅ ZSBOM scan completed successfully"
+            echo "scan_status=success" >> $GITHUB_OUTPUT
+            echo "scan_message=✅ No vulnerability threshold violations detected" >> $GITHUB_OUTPUT
+          elif [ $SCAN_EXIT_CODE -eq 1 ]; then
+            echo "❌ ZSBOM scan failed: Vulnerability threshold exceeded or critical vulnerabilities found"
+            echo "::error::Build failed due to vulnerability threshold violations. Check the Zerberus dashboard for details."
+            echo "scan_status=failed" >> $GITHUB_OUTPUT
+            echo "scan_message=❌ Vulnerability threshold exceeded or critical vulnerabilities found" >> $GITHUB_OUTPUT
+          else
+            echo "❌ ZSBOM scan failed with exit code $SCAN_EXIT_CODE"
+            echo "::error::ZSBOM scan encountered an error. Check logs for details."
+            echo "scan_status=error" >> $GITHUB_OUTPUT
+            echo "scan_message=❌ ZSBOM scan encountered an error (exit code: $SCAN_EXIT_CODE)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sign SBOM with cosign
+        if: success()
+        run: |
+          if [ -f "sbom.json" ]; then
+            echo "🔐 Signing SBOM with cosign..."
+            cosign sign-blob --yes --oidc-provider=github-actions --output-signature sbom.json.sig --output-certificate sbom.json.cert sbom.json
+            echo "✅ SBOM signed successfully"
+          else
+            echo "⚠️ sbom.json not found - skipping signing step"
+          fi
+
+      - name: Upload ZSBOM results to Zerberus
+        if: always() && env.UNSUPPORTED_REPO != 'true'
+        env:
+          ZERBERUS_LICENSE_KEY: ${{ secrets.ZERBERUS_LICENSE_KEY }}
+          ZERBERUS_API_URL: ${{ env.ZERBERUS_API_URL }}
+        run: |
+          echo "📤 Uploading ZSBOM results to Zerberus dashboard..."
+          zsbom upload
+          UPLOAD_EXIT_CODE=$?
+          echo "UPLOAD_EXIT_CODE=$UPLOAD_EXIT_CODE" >> $GITHUB_ENV
+          if [ $UPLOAD_EXIT_CODE -eq 0 ]; then
+            echo "✅ Results uploaded successfully to Zerberus dashboard"
+          else
+            echo "⚠️ Upload failed with exit code: $UPLOAD_EXIT_CODE"
+          fi
+
+      - name: Upload SBOM artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zsbom-results-${{ github.run_number }}
+          path: |
+            sbom.json
+            sbom.json.sig
+            sbom.json.cert
+            validation_report.json
+            pr_comment.md
+          retention-days: 30
+
+      - name: Add PR comment with scan results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '';
+
+            try {
+              // Read ZSBOM-generated rich comment
+              body = fs.readFileSync('pr_comment.md', 'utf8');
+            } catch (error) {
+              // Fallback message if file generation failed
+              const scanStatus = '${{ steps.zsbom-scan.outputs.scan_status }}';
+              const templateVersion = '${{ env.TEMPLATE_VERSION }}';
+              const unsupportedRepo = '${{ env.UNSUPPORTED_REPO }}';
+
+              // Handle unsupported repository case
+              if (unsupportedRepo === 'true' || scanStatus === 'unsupported') {
+                body = '## ℹ️ ZSBOM Security Scan - Unsupported Ecosystem\n\n' +
+                       '**Status:** This repository uses unsupported ecosystems\n' +
+                       '**Template Version:** ' + templateVersion + '\n' +
+                       '**Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n' +
+                       '---\n' +
+                       'ℹ️ *This repository uses package ecosystems that are not yet supported by ZSBOM.*\n' +
+                       '📦 *Currently supported: Python, JavaScript/npm*\n' +
+                       '💡 *Support for additional ecosystems (Go, Rust, Java, etc.) is coming soon!*';
+              } else {
+                // Standard fallback for supported repositories
+                const statusEmoji = scanStatus === 'success' ? '✅' : '❌';
+                body = '## ' + statusEmoji + ' ZSBOM Security Scan Results\n\n' +
+                       '**Status:** ' + (scanStatus === 'success' ? 'Scan completed' : 'Scan failed') + '\n' +
+                       '**Template Version:** ' + templateVersion + '\n' +
+                       '**Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n' +
+                       '*Check workflow logs for detailed results.*';
+              }
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Check scan and upload exit codes and fail if needed
+        if: always()
+        run: |
+          echo "🔍 Final status check..."
+          echo "Template Version: ${{ env.TEMPLATE_VERSION }}"
+          echo "Scan Exit Code: ${{ env.SCAN_EXIT_CODE }}"
+          echo "Upload Exit Code: ${{ env.UPLOAD_EXIT_CODE }}"
+
+          # Check if repository uses unsupported ecosystems
+          if [ "${{ env.UNSUPPORTED_REPO }}" = "true" ]; then
+            echo "ℹ️  Repository uses unsupported ecosystems - no action required"
+            echo "📦 ZSBOM currently supports: Python, JavaScript/npm"
+            echo "💡 Support for additional ecosystems (Go, Rust, Java, etc.) is coming soon!"
+            echo "✅ Workflow completed successfully - no security scan performed"
+            exit 0
+          fi
+
+          # Check for actual errors/failures
+          if [ "${{ env.SCAN_EXIT_CODE }}" != "0" ]; then
+            echo "❌ Pipeline failed due to ZSBOM scan failure (exit code: ${{ env.SCAN_EXIT_CODE }})"
+            echo "📊 Check the PR comment above and Zerberus dashboard for detailed vulnerability information."
+            exit ${{ env.SCAN_EXIT_CODE }}
+          elif [ "${{ env.UPLOAD_EXIT_CODE }}" != "0" ]; then
+            echo "❌ Pipeline failed due to vulnerability threshold violation (exit code: ${{ env.UPLOAD_EXIT_CODE }})"
+            echo "📊 Check the Zerberus dashboard for detailed vulnerability information."
+            exit ${{ env.UPLOAD_EXIT_CODE }}
+          else
+            echo "✅ All checks passed - no action required"
+          fi
+
+      - name: Scan completed successfully
+        if: success()
+        run: |
+          echo "✅ ZSBOM scan completed successfully (Template Version: ${{ env.TEMPLATE_VERSION }})!"
+          echo "📊 Results uploaded to Zerberus dashboard: https://api.zerberus.ai"
+          echo "🔐 SBOM signed and uploaded as workflow artifact"
+          echo "💡 No vulnerability threshold violations detected."
+
+      - name: Scan failed - blocking PR
+        if: failure()
+        run: |
+          echo "❌ ZSBOM scan failed and is blocking this PR/push (Template Version: ${{ env.TEMPLATE_VERSION }})"
+          echo ""
+          echo "🔍 This failure could be due to:"
+          echo "   • Vulnerability threshold exceeded"
+          echo "   • Critical vulnerabilities detected in dependencies"
+          echo "   • License compliance violations"
+          echo "   • Technical scan errors"
+          echo ""
+          echo "📊 Check the following for detailed information:"
+          echo "   • PR comment above (if applicable)"
+          echo "   • Zerberus dashboard: https://api.zerberus.ai"
+          echo "   • Workflow artifacts for SBOM and validation reports"
+          echo ""
+          echo "⚠️  This workflow file is managed by Zerberus automation - do not edit manually."
