@@ -32,7 +32,7 @@ env:
   PYTHON_VERSION: "3.11"
   PIP_VERSION: "24.0"
   GO_VERSION: "1.24"
-  ZSBOM_VERSION: "v0.12-beta.0"  # Stable release tag
+  ZSBOM_VERSION: "v0.12-beta.1"  # Stable release tag
   ZERBERUS_API_URL: "https://api.zerberus.ai"  # Centralized API URL
   ZERBERUS_DASHBOARD_URL: "https://app.zerberus.ai"  # Dashboard URL for PR comments
 
