@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ app_title }}</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body data-app-title="{{ app_title }}">
+    <div class="background-glow background-glow-a"></div>
+    <div class="background-glow background-glow-b"></div>
+    <div class="shell">
+      <header class="hero panel">
+        <div class="hero-copy">
+          <p class="eyebrow">Personalized trading workspace</p>
+          <h1 id="hero-title">{{ app_title }}</h1>
+          <p class="hero-text">
+            Tune your own risk profile, run a private watchlist, stage paper trades,
+            and switch on live Breeze quotes when your credentials are ready.
+          </p>
+        </div>
+        <div class="hero-meta">
+          <span class="pill" id="broker-pill">
+            {% if broker_configured %}Live broker ready{% else %}Paper mode only{% endif %}
+          </span>
+          <p class="broker-copy" id="broker-copy">
+            {% if broker_configured %}
+            Breeze credentials are configured, so quote refresh can use live market data.
+            {% else %}
+            Add Breeze credentials later; manual prices and paper execution already work.
+            {% endif %}
+          </p>
+          <button class="button button-ghost" id="reset-paper" type="button">Reset Paper Account</button>
+        </div>
+      </header>
+
+      <div class="status-bar" id="status-bar">Loading desk...</div>
+
+      <main class="dashboard-grid">
+        <section class="panel" aria-labelledby="overview-heading">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">Capital and risk</p>
+              <h2 id="overview-heading">Overview</h2>
+            </div>
+          </div>
+          <div class="overview-grid" id="overview-cards"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="profile-heading">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">Personal controls</p>
+              <h2 id="profile-heading">Profile</h2>
+            </div>
+          </div>
+          <form id="profile-form" class="stack-form">
+            <div class="form-grid">
+              <label>
+                <span>Display Name</span>
+                <input name="display_name" type="text" required />
+              </label>
+              <label>
+                <span>Trading Style</span>
+                <input name="trading_style" type="text" required />
+              </label>
+              <label>
+                <span>Preferred Exchange</span>
+                <input name="preferred_exchange" type="text" required />
+              </label>
+              <label>
+                <span>Default Quantity</span>
+                <input name="default_order_quantity" type="number" min="1" required />
+              </label>
+              <label>
+                <span>Max Open Positions</span>
+                <input name="max_open_positions" type="number" min="1" required />
+              </label>
+              <label>
+                <span>Max Position Value</span>
+                <input name="max_position_value" type="number" min="1" step="0.01" required />
+              </label>
+              <label>
+                <span>Max Drawdown Limit</span>
+                <input name="max_drawdown_limit" type="number" min="1" step="0.01" required />
+              </label>
+              <label>
+                <span>Starting Paper Cash</span>
+                <input name="paper_starting_cash" type="number" min="1" step="0.01" required />
+              </label>
+            </div>
+            <label>
+              <span>Notes</span>
+              <textarea name="notes" rows="4" placeholder="Set your setups, exclusions, timing rules, or checklist."></textarea>
+            </label>
+            <button class="button" type="submit">Save Profile</button>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="watchlist-heading">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">Names worth stalking</p>
+              <h2 id="watchlist-heading">Watchlist</h2>
+            </div>
+            <button class="button button-ghost" id="refresh-watchlist" type="button">Refresh Quotes</button>
+          </div>
+          <form id="watchlist-form" class="inline-form">
+            <input name="symbol" type="text" placeholder="Symbol" required />
+            <input name="exchange" type="text" placeholder="Exchange" value="NSE" required />
+            <input name="product_type" type="text" placeholder="Product" value="cash" required />
+            <input name="notes" type="text" placeholder="Why it matters" />
+            <button class="button" type="submit">Add Symbol</button>
+          </form>
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Instrument</th>
+                  <th>Last</th>
+                  <th>Notes</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="watchlist-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="order-heading">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">Simulation first</p>
+              <h2 id="order-heading">Paper Ticket</h2>
+            </div>
+          </div>
+          <form id="order-form" class="stack-form">
+            <div class="form-grid">
+              <label>
+                <span>Symbol</span>
+                <input name="symbol" type="text" required />
+              </label>
+              <label>
+                <span>Exchange</span>
+                <input name="exchange" type="text" value="NSE" required />
+              </label>
+              <label>
+                <span>Product</span>
+                <input name="product_type" type="text" value="cash" required />
+              </label>
+              <label>
+                <span>Side</span>
+                <select name="side">
+                  <option value="buy">Buy</option>
+                  <option value="sell">Sell</option>
+                </select>
+              </label>
+              <label>
+                <span>Quantity</span>
+                <input name="quantity" type="number" min="1" required />
+              </label>
+              <label>
+                <span>Price</span>
+                <input name="price" type="number" min="0.01" step="0.01" required />
+              </label>
+            </div>
+            <label>
+              <span>Notes</span>
+              <input name="notes" type="text" placeholder="Setup, thesis, invalidation, or reason for exit" />
+            </label>
+            <button class="button" type="submit">Execute Paper Order</button>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="alerts-heading">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">Price discipline</p>
+              <h2 id="alerts-heading">Alerts</h2>
+            </div>
+          </div>
+          <form id="alert-form" class="inline-form">
+            <input name="symbol" type="text" placeholder="Symbol" required />
+            <input name="exchange" type="text" placeholder="Exchange" value="NSE" required />
+            <input name="product_type" type="text" placeholder="Product" value="cash" required />
+            <select name="trigger_type">
+              <option value="above">Above</option>
+              <option value="below">Below</option>
+            </select>
+            <input name="trigger_price" type="number" min="0.01" step="0.01" placeholder="Trigger price" required />
+            <input name="note" type="text" placeholder="Context" />
+            <button class="button" type="submit">Create Alert</button>
+          </form>
+          <div id="alerts-list" class="list-stack"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="positions-heading">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">Exposure</p>
+              <h2 id="positions-heading">Positions</h2>
+            </div>
+          </div>
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Instrument</th>
+                  <th>Qty</th>
+                  <th>Avg</th>
+                  <th>Mark</th>
+                  <th>Unrealized</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody id="positions-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="orders-heading">
+          <div class="section-header">
+            <div>
+              <p class="section-kicker">Execution log</p>
+              <h2 id="orders-heading">Recent Orders</h2>
+            </div>
+          </div>
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Instrument</th>
+                  <th>Side</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th>Realized</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

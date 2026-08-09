@@ -23,8 +23,6 @@ import socket
 
 requests.packages.urllib3.util.connection.HAS_IPV6 = False
 
-resp = urlopen(config.SECURITY_MASTER_URL)
-zipfile = ZipFile(BytesIO(resp.read()))
 api_endpoint = config.APIEndPoint
 resp_message = config.ResponseMessage
 except_message = config.ExceptionMessage
@@ -32,6 +30,15 @@ req_type = config.APIRequestType
 logger = logging.getLogger('engineio.client')
 logger.propagate = False
 logger.setLevel(logging.CRITICAL)
+security_master_archive = None
+
+
+def get_security_master_archive():
+    global security_master_archive
+    if security_master_archive is None:
+        resp = urlopen(config.SECURITY_MASTER_URL)
+        security_master_archive = ZipFile(BytesIO(resp.read()))
+    return security_master_archive
 
 
 class SocketEventBreeze(socketio.ClientNamespace):
@@ -1635,7 +1642,7 @@ class ApificationBreeze():
             lexchange_code = exchange_code.lower()
             stock_code = stock_code.upper()
             mapper_exchangecode_to_file = config.ISEC_NSE_CODE_MAP_FILE
-            required_file = zipfile.open(mapper_exchangecode_to_file.get(lexchange_code))
+            required_file = get_security_master_archive().open(mapper_exchangecode_to_file.get(lexchange_code))
     
             dataframe = pd.read_csv(required_file, sep=',', engine='python')
              
