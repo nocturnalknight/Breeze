@@ -12,6 +12,13 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=['python-socketio[client]','requests','pandas'],
+    extras_require={
+        "trading_app": [
+            "fastapi>=0.115.0",
+            "jinja2>=3.1.0",
+            "uvicorn>=0.30.0",
+        ],
+    },
     url="https://github.com/Idirect-Tech/Breeze-Python-SDK/",
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -19,5 +26,8 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     packages=setuptools.find_packages(),
+    package_data={
+        "trading_app": ["templates/*.html", "static/*.css", "static/*.js"],
+    },
     python_requires=">=3.6",
 )
