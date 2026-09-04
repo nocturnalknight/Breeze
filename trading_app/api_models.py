@@ -45,3 +45,34 @@ class PaperOrderRequest(BaseModel):
     quantity: int = Field(gt=0)
     price: float = Field(gt=0)
     notes: str = Field(default="", max_length=500)
+
+
+class LiveOrderRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=40)
+    exchange: str = Field(default="NSE", min_length=1, max_length=12)
+    side: Literal["buy", "sell"]
+    order_type: Literal["limit", "stoploss"]
+    quantity: int = Field(gt=0)
+    price: float = Field(gt=0)
+    trigger_price: Optional[float] = Field(default=None, gt=0)
+    validity: Literal["day", "ioc"] = "day"
+
+
+class LiveOrderModifyRequest(BaseModel):
+    exchange: str = Field(default="NSE", min_length=1, max_length=12)
+    order_type: Optional[Literal["limit", "stoploss"]] = None
+    quantity: Optional[int] = Field(default=None, gt=0)
+    price: Optional[float] = Field(default=None, gt=0)
+    trigger_price: Optional[float] = Field(default=None, gt=0)
+    validity: Optional[Literal["day", "ioc"]] = None
+
+
+class SquareOffRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=40)
+    exchange: str = Field(default="NSE", min_length=1, max_length=12)
+    quantity: int = Field(gt=0)
+    price: float = Field(gt=0)
+
+
+class SessionRefreshRequest(BaseModel):
+    session_token: str = Field(min_length=1)
